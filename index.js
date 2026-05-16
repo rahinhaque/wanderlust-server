@@ -14,7 +14,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      "https://wanderlust-server-4z29.onrender.com/", // 👈 Replace with your actual Vercel URL
+      "https://wanderlust-tawny-ten.vercel.app",
     ],
     credentials: true,
   }),
