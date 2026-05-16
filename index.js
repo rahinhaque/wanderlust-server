@@ -8,7 +8,12 @@ const cors = require("cors");
 const port = process.env.PORT || 5000;
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "https://your-frontend-link.vercel.app"],
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 const uri = process.env.MONGODB_URI;
