@@ -6,22 +6,58 @@ const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
+// ✅ Import Better Auth utilities
+const { toNodeHandler } = require("better-auth/node");
+const { auth } = require("./auth"); // Make sure this points to your Better Auth config file
+
 const app = express();
 const port = process.env.PORT || 5000;
 
-// ✅ Middleware
+// ==========================================
+// ✅ 1. GLOBAL CORS CONFIGURATION
+// ==========================================
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://wanderlust-tawny-ten.vercel.app",
+];
+
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "https://wanderlust-tawny-ten.vercel.app",
-    ],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) === -1) {
+        return callback(new Error("CORS Policy Violation"), false);
+      }
+      return callback(null, true);
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+    ],
   }),
 );
+
+// Handle browser preflight OPTIONS requests globally
+app.options("*", cors());
+
+// ==========================================
+// ✅ 2. BETTER AUTH MOUNT (CRITICAL: MUST BE BEFORE express.json())
+// ==========================================
+app.all("/api/auth/*", toNodeHandler(auth));
+
+// ==========================================
+// ✅ 3. PARSING MIDDLEWARE (CRITICAL: MUST BE AFTER BETTER AUTH)
+// ==========================================
 app.use(express.json());
 
-// ✅ MongoDB Connection
+// ==========================================
+// ✅ 4. MONGODB CONNECTION & APP ROUTES
+// ==========================================
 const uri = process.env.MONGODB_URI;
 const client = new MongoClient(uri, {
   serverApi: {
@@ -121,7 +157,7 @@ async function run() {
       res.send(result);
     });
 
-    // DELETE - Booking (Updated for Frontend compatibility)
+    // DELETE - Booking
     app.delete("/bookings/:id", async (req, res) => {
       try {
         const id = req.params.id;
@@ -154,20 +190,21 @@ async function run() {
   }
 }
 
-// ✅ Run the DB connection logic
+// Run the DB connection logic
 run().catch(console.dir);
 
-// ✅ Base Routes
+// ==========================================
+// ✅ 5. BASE & HEALTH ROUTES
+// ==========================================
 app.get("/", (req, res) => {
   res.send("Wanderlust API is running...");
 });
 
-// ✅ Health check for Render
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
-// ✅ Start Server
+// Start Server
 app.listen(port, () => {
   console.log(`🚀 Server listening on port ${port}`);
 });
