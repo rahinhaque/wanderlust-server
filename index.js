@@ -5,59 +5,25 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-
-// ✅ Import Better Auth utilities
-const { toNodeHandler } = require("better-auth/node");
-const { auth } = require("./auth"); // Make sure this points to your Better Auth config file
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// ==========================================
-// ✅ 1. GLOBAL CORS CONFIGURATION
-// ==========================================
-const allowedOrigins = [
-  "http://localhost:3000",
-  "https://wanderlust-tawny-ten.vercel.app",
-];
-
+// ✅ Middleware
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) === -1) {
-        return callback(new Error("CORS Policy Violation"), false);
-      }
-      return callback(null, true);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
+    origin: [
+      "http://localhost:3000",
+      "https://wanderlust-tawny-ten.vercel.app",
     ],
+    allowedHeaders: ["Authorization", "Content-Type"],
+    credentials: true,
   }),
 );
-
-// Handle browser preflight OPTIONS requests globally
-app.options("*", cors());
-
-// ==========================================
-// ✅ 2. BETTER AUTH MOUNT (CRITICAL: MUST BE BEFORE express.json())
-// ==========================================
-app.all("/api/auth/*", toNodeHandler(auth));
-
-// ==========================================
-// ✅ 3. PARSING MIDDLEWARE (CRITICAL: MUST BE AFTER BETTER AUTH)
-// ==========================================
 app.use(express.json());
 
-// ==========================================
-// ✅ 4. MONGODB CONNECTION & APP ROUTES
-// ==========================================
+// ✅ MongoDB Connection
 const uri = process.env.MONGODB_URI;
 const client = new MongoClient(uri, {
   serverApi: {
@@ -78,12 +44,42 @@ async function run() {
     console.log("✅ Successfully connected to MongoDB!");
 
     // --- DESTINATION ROUTES ---
+    //jwks
+    const JWKS = createRemoteJWKSet(
+      new URL("https://wanderlust-server-4z29.onrender.com/api/auth/jwks"),
+    );
+
+
+
+    //verify token::
+    const verifyToken = async(req, res, next) => {
+      const authHeader = req?.headers.authorization;
+      if(!authHeader){
+        return res.status(401).send({message:"Unauthorized access"});
+      }
+      const token = authHeader?.split(" ")[1];
+      if(!token){
+        return res.status(401).send({message:"Unauthorized access"});
+      }
+
+     try{
+       const { payload} = await jwtVerify(token, JWKS);
+       next();
+     }catch{
+       return res.status(403).send({message:"Forbidden access"});
+     }
+
+      
+    };     
+    
 
     // GET - All destinations
-    app.get("/destinations", async (req, res) => {
+    app.get("/destinations",verifyToken, async (req, res) => {
       const result = await destinationCollection.find().toArray();
       res.send(result);
     });
+    //middleware
+
 
     // GET - Single destination by ID
     app.get("/destinations/:id", async (req, res) => {
@@ -105,7 +101,7 @@ async function run() {
     });
 
     // POST - Add destination
-    app.post("/destinations", async (req, res) => {
+    app.post("/destinations",verifyToken, async (req, res) => {
       const result = await destinationCollection.insertOne(req.body);
       res.send(result);
     });
@@ -121,7 +117,7 @@ async function run() {
     });
 
     // DELETE - Destination
-    app.delete("/destinations/:id", async (req, res) => {
+    app.delete("/destinations/:id",verifyToken, async (req, res) => {
       const id = req.params.id;
       const result = await destinationCollection.deleteOne({
         _id: new ObjectId(id),
@@ -157,8 +153,8 @@ async function run() {
       res.send(result);
     });
 
-    // DELETE - Booking
-    app.delete("/bookings/:id", async (req, res) => {
+    // DELETE - Booking (Updated for Frontend compatibility)
+    app.delete("/bookings/:id",verifyToken, async (req, res) => {
       try {
         const id = req.params.id;
         const result = await bookingCollection.deleteOne({
@@ -190,21 +186,20 @@ async function run() {
   }
 }
 
-// Run the DB connection logic
+// ✅ Run the DB connection logic
 run().catch(console.dir);
 
-// ==========================================
-// ✅ 5. BASE & HEALTH ROUTES
-// ==========================================
+// ✅ Base Routes
 app.get("/", (req, res) => {
   res.send("Wanderlust API is running...");
 });
 
+// ✅ Health check for Render
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
-// Start Server
+// ✅ Start Server
 app.listen(port, () => {
   console.log(`🚀 Server listening on port ${port}`);
 });
